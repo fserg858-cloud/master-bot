@@ -1,24 +1,32 @@
-FROM node:20-alpine
-
-# Security: non-root user
-RUN addgroup -S app && adduser -S app -G app
-
+## ─── stage 1: deps ────────────────────────────────────────────
+FROM node:20-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --include=dev --no-audit --no-fund
 
-# Install deps first (cached layer)
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+## ─── stage 2: build ───────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
-# Copy source
-COPY src/ ./src/
+## ─── stage 3: runtime ─────────────────────────────────────────
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache wget
 
-# Non-root
-USER app
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
+COPY --from=build /app/dist ./dist
 
-EXPOSE 3000
+USER node
+EXPOSE 3001
 
-CMD ["node", "src/index.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3001/health || exit 1
+
+CMD ["node", "dist/server.js"]

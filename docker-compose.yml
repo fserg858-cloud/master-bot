@@ -1,87 +1,19 @@
-# docker-compose.yml
-# ═══ Sergeev Agents Platform ═══
-# master-bot + n8n + nginx (SSL via Certbot)
-
 services:
-
-  # ─── Master Bot Service (handles ALL client bot messages) ───
   master-bot:
     build: .
     container_name: master-bot
-    restart: always
+    restart: unless-stopped
     env_file: .env
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
     logging:
       driver: json-file
       options:
-        max-size: "50m"
-        max-file: "5"
-
-  # ─── n8n (for Dmitry, cron jobs, SDR, admin workflows) ───
-  n8n:
-    image: docker.n8n.io/n8nio/n8n
-    container_name: n8n
-    restart: always
-    ports:
-      - "127.0.0.1:5678:5678"
-    environment:
-      - N8N_HOST=n8n.sergeev-agents.ru
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=https
-      - WEBHOOK_URL=https://n8n.sergeev-agents.ru/
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
-      - GENERIC_TIMEZONE=Europe/Moscow
-      - TZ=Europe/Moscow
-      - N8N_SECURE_COOKIE=true
-      - N8N_RUNNERS_ENABLED=true
-      - NODE_FUNCTION_ALLOW_EXTERNAL=@supabase/supabase-js
-    volumes:
-      - n8n_data:/home/node/.n8n
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-
-  # ─── Nginx reverse proxy (SSL termination) ───
-  nginx:
-    image: nginx:alpine
-    container_name: nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - certbot_data:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot:ro
-    depends_on:
-      - master-bot
-      - n8n
-
-  # ─── Certbot (auto-renew SSL) ───
-  certbot:
-    image: certbot/certbot
-    container_name: certbot
-    volumes:
-      - certbot_data:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-
-volumes:
-  n8n_data:
-  certbot_data:
-  certbot_www:
+        max-size: "10m"
+        max-file: "3"
